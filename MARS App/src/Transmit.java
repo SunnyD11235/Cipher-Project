@@ -22,7 +22,7 @@ public class Transmit implements Encryptable {
 		for (int i = 0; i < 3; i++) {
 			unExpandedKey[i] = keyInput[i];
 		}
-		// key expansion algorithm goes here
+		// key expansion algorithm here
 		for (int i = 0; i < 3; i++) {
 			temp[i] = keyInput[i];
 		}
@@ -128,6 +128,7 @@ public class Transmit implements Encryptable {
 
 		// crytographic core
 		for (int i = 0; i < 16; i++) {
+			// begin e-function
 			int[] outs = new int[3];
 			int[] ins = new int[] { output[0], key[2 * i + 4], key[2 * i + 5] };
 
@@ -156,17 +157,18 @@ public class Transmit implements Encryptable {
 			outs[0] <<= firstBits;
 			outs[0] += tempo;
 
+			// end e-function
 			firstBits = output[0] / 0x00080000;
 			output[0] <<= 13;
 			output[0] += firstBits;
 
-			output[2] += outs[2];
+			output[2] += outs[1];
 			if (i < 8) {
-				output[1] += outs[1];
-				output[3] ^= outs[3];
+				output[1] += outs[0];
+				output[3] ^= outs[2];
 			} else {
-				output[3] += outs[1];
-				output[1] ^= outs[3];
+				output[3] += outs[0];
+				output[1] ^= outs[2];
 			}
 
 			int temp = output[0];
@@ -220,8 +222,136 @@ public class Transmit implements Encryptable {
 
 	@Override
 	public int[] decrypt(int[] data) {
-		// TODO Auto-generated method stub
-		return null;
+		int[] output = new int[4];
+		for (int i = 0; i < 4; i++) {
+			output[i] = data[i];
+		}
+
+		// forward mixing
+		for (int i = 0; i < 4; i++) {
+			output[i] += key[36 + i];
+		}
+		int byteOne, byteTwo, byteThree;
+		for (int i = 7; i >= 0; i--) {
+			int temp = output[3];
+			for (int k = 0; k < 3; k++) {
+				output[k + 1] = output[k];
+			}
+			output[0] = temp;
+
+			byteOne = output[0] % 256;
+			output[0] >>= 8;
+			output[0] += 0x01000000 * byteOne;
+
+			byteTwo = output[0] % 256;
+			output[0] >>= 8;
+			output[0] += 0x01000000 * byteTwo;
+
+			byteThree = output[0] % 256;
+			output[0] >>= 8;
+			output[0] += 0x01000000 * byteThree;
+
+			output[3] ^= s_box[byteTwo];
+			output[3] += s_box[256 + byteThree];
+			output[2] += s_box[output[0] % 256];
+			output[1] ^= s_box[256 + byteOne];
+
+			if (i == 2 || i == 6)
+				output[0] += output[3];
+			if (i == 3 || i == 7)
+				output[0] += output[1];
+		}
+
+		// cryptographic core
+		for (int i = 15; i >= 0; i++) {
+			int temp = output[3];
+			for (int k = 0; k < 3; k++) {
+				output[k + 1] = output[k];
+			}
+			output[0] = temp;
+
+			int lastBits = output[0] % 0x00080000;
+			output[0] >>= 13;
+			output[0] += 0x00080000 * lastBits;
+
+			// e-function
+			int[] outs = new int[3];
+			int[] ins = new int[] { output[0], key[2 * i + 4], key[2 * i + 5] };
+
+			outs[1] = ins[0] + ins[1];
+			int firstBits = ins[0] / 0x00080000;
+			outs[2] = ((ins[0] << 13 + firstBits) * ins[2]) % (1 << 32);
+			outs[0] = s_box[output[1] % 0x00000200];
+
+			firstBits = outs[2] / 0x08000000;
+			outs[2] <<= 5;
+			outs[2] += firstBits;
+
+			int tempo = outs[1] / (1 << (32 - firstBits));
+			outs[1] <<= firstBits;
+			outs[1] += tempo;
+
+			outs[0] ^= outs[2];
+
+			firstBits = outs[2] / 0x08000000;
+			outs[2] <<= 5;
+			outs[2] += firstBits;
+
+			outs[0] ^= outs[2];
+
+			tempo = outs[0] / (1 << (32 - firstBits));
+			outs[0] <<= firstBits;
+			outs[0] += tempo;
+
+			// end e-function
+
+			output[2] -= outs[1];
+			if (i < 8) {
+				output[1] -= outs[0];
+				output[3] ^= outs[2];
+			} else {
+				output[3] -= outs[0];
+				output[1] ^= outs[2];
+			}
+		}
+
+		// backwards mixing
+		for (int i = 7; i >= 0; i--) {
+			int temp = output[3];
+			for (int k = 0; k < 3; k++) {
+				output[k + 1] = output[k];
+			}
+			output[0] = temp;
+
+			if (i == 0 || i == 4)
+				output[0] -= output[3];
+			if (i == 1 || i == 5)
+				output[0] -= output[1];
+
+			byteOne = output[0] / 0x01000000;
+			output[3] ^= s_box[256 + byteOne];
+			output[0] <<= 8;
+			output[0] += byteOne;
+
+			byteOne = output[0] / 0x01000000;
+			output[2] -= s_box[byteOne];
+			output[0] <<= 8;
+			output[0] += byteOne;
+
+			byteOne = output[0] / 0x01000000;
+			output[1] -= s_box[256 + byteOne];
+			output[0] <<= 8;
+			output[0] += byteOne;
+
+			byteOne = output[0] / 0x01000000;
+			output[1] ^= s_box[byteOne];
+		}
+
+		for (int i = 0; i < 4; i++) {
+			output[i] -= key[i];
+		}
+
+		return output;
 	}
 
 }
