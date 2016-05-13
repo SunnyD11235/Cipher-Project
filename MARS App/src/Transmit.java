@@ -1,7 +1,7 @@
 
 public class Transmit implements Encryptable {
 
-	private int[] key;
+	private int[] unExpandedKey, key;
 
 	public Transmit() {
 		this(new int[] { 0, 0, 0, 0 });
@@ -11,8 +11,73 @@ public class Transmit implements Encryptable {
 		setKey(key);
 	}
 
-	public void setKey(int[] key) {
-		this.key = key;
+	public static int getBit(int num, int index) {
+		return (num / (1 << index)) % 2;
+	}
+
+	public void setKey(int[] keyInput) {
+		unExpandedKey = new int[4];
+		key = new int[40];
+		int[] temp = new int[15];
+		for (int i = 0; i < 3; i++) {
+			unExpandedKey[i] = keyInput[i];
+		}
+		// key expansion algorithm goes here
+		for (int i = 0; i < 3; i++) {
+			temp[i] = keyInput[i];
+		}
+		for (int j = 0; j < 4; j++) {
+			for (int i = 0; i > 15; i++) {
+				temp[i] = temp[i] ^ ((temp[(i - 7) % 15] ^ temp[(i - 2) % 15]) << 3) ^ (4 * i + j);
+
+			}
+			for (int k = 0; k < 4; k++) {
+				for (int i = 0; i < 15; i++) {
+					temp[i] = (temp[i] + s_box[temp[(i - 1) % 15] % (int) Math.pow(2, 9)]) << 9;
+				}
+			}
+			for (int i = 0; i < 10; i++) {
+				key[10 * j + i] = temp[(4 * i) % 15];
+			}
+
+		}
+		for (int i = 5; i < 37; i += 2) {
+			int j = key[i] & 3;
+			int w = key[i] | 3;
+			int counter = 0;
+			int[] mask = new int[32];
+			int tempo = getBit(w, 0);
+			for (int k = 1; k < 32; k++) {
+				while (getBit(w, k) == tempo) {
+					counter++;
+					k++;
+				}
+				if (counter >= 10) {
+					for (int a = 0; a < counter; a++) {
+						mask[k - a - 1] = 1;
+					}
+				}
+			}
+			for (int k = 1; k < 32; k++) {
+				if (tempo != getBit(w, k)) {
+					mask[k] = 0;
+					mask[k - 1] = 0;
+				}
+			}
+			int Mask = 0;
+			for (int k = 31; k >= 0; k--) {
+				Mask += mask[k] << k;
+			}
+
+			int p = s_box[265 + j];
+			int lastBitsOfKey = key[i - 1] % 0x00000020;
+			int firstBitsOfP = p / (1 << (32 - lastBitsOfKey));
+			p <<= lastBitsOfKey;
+			p += firstBitsOfP;
+
+			key[i] = w ^ (p & Mask);
+		}
+
 	}
 
 	@Override
@@ -63,7 +128,52 @@ public class Transmit implements Encryptable {
 
 		// crytographic core
 		for (int i = 0; i < 16; i++) {
+			int[] outs = new int[3];
+			int[] ins = new int[] { output[0], key[2 * i + 4], key[2 * i + 5] };
 
+			outs[1] = ins[0] + ins[1];
+			int firstBits = ins[0] / 0x00080000;
+			outs[2] = ((ins[0] << 13 + firstBits) * ins[2]) % (1 << 32);
+			outs[0] = s_box[output[1] % 0x00000200];
+
+			firstBits = outs[2] / 0x08000000;
+			outs[2] <<= 5;
+			outs[2] += firstBits;
+
+			int tempo = outs[1] / (1 << (32 - firstBits));
+			outs[1] <<= firstBits;
+			outs[1] += tempo;
+
+			outs[0] ^= outs[2];
+
+			firstBits = outs[2] / 0x08000000;
+			outs[2] <<= 5;
+			outs[2] += firstBits;
+
+			outs[0] ^= outs[2];
+
+			tempo = outs[0] / (1 << (32 - firstBits));
+			outs[0] <<= firstBits;
+			outs[0] += tempo;
+
+			firstBits = output[0] / 0x00080000;
+			output[0] <<= 13;
+			output[0] += firstBits;
+
+			output[2] += outs[2];
+			if (i < 8) {
+				output[1] += outs[1];
+				output[3] ^= outs[3];
+			} else {
+				output[3] += outs[1];
+				output[1] ^= outs[3];
+			}
+
+			int temp = output[0];
+			for (int k = 1; k < 4; k++) {
+				output[k - 1] = output[k];
+			}
+			output[3] = temp;
 		}
 
 		// backwards mixing
