@@ -12,7 +12,11 @@ public class Receive implements Encryptable {
 	}
 
 	public static int getBit(int num, int index) {
-		return (num / (1 << index)) % 2;
+		return mod((num / (1 << index)), 2);
+	}
+
+	public static int mod(int num, int mod) {
+		return ((num % mod) + mod) % mod;
 	}
 
 	public void setKey(int[] keyInput) {
@@ -28,16 +32,23 @@ public class Receive implements Encryptable {
 		}
 		for (int j = 0; j < 4; j++) {
 			for (int i = 0; i > 15; i++) {
-				temp[i] = temp[i] ^ ((temp[(i - 7) % 15] ^ temp[(i - 2) % 15]) << 3) ^ (4 * i + j);
+				int temporary = temp[mod(i - 7, 15)] ^ temp[mod(i - 2, 15)];
+				int firstBits = temporary / 0x20000000;
+				temporary <<= 3;
+				temporary += firstBits;
+				temp[i] ^= (temporary) ^ (4 * i + j);
 
 			}
 			for (int k = 0; k < 4; k++) {
 				for (int i = 0; i < 15; i++) {
-					temp[i] = (temp[i] + s_box[temp[(i - 1) % 15] % (int) Math.pow(2, 9)]) << 9;
+					temp[i] += s_box[mod(temp[mod(i - 1, 15)], (1 << 9))];
+					int firstBits = temp[i] / 0x00800000;
+					temp[i] <<= 9;
+					temp[i] += firstBits;
 				}
 			}
 			for (int i = 0; i < 10; i++) {
-				key[10 * j + i] = temp[(4 * i) % 15];
+				key[10 * j + i] = temp[mod(4 * i, 15)];
 			}
 
 		}
@@ -70,7 +81,7 @@ public class Receive implements Encryptable {
 			}
 
 			int p = s_box[265 + j];
-			int lastBitsOfKey = key[i - 1] % 0x00000020;
+			int lastBitsOfKey = mod(key[i - 1], 0x00000020);
 			int firstBitsOfP = p / (1 << (32 - lastBitsOfKey));
 			p <<= lastBitsOfKey;
 			p += firstBitsOfP;
@@ -96,22 +107,22 @@ public class Receive implements Encryptable {
 		}
 		int lastByte;
 		for (int i = 0; i < 8; i++) {
-			lastByte = output[0] % 256;
+			lastByte = mod(output[0], 256);
 			output[1] ^= s_box[lastByte];
 			output[0] >>= 8;
 			output[0] += 0x01000000 * lastByte;
 
-			lastByte = output[0] % 256;
+			lastByte = mod(output[0], 256);
 			output[1] += s_box[256 + lastByte];
 			output[0] >>= 8;
 			output[0] += 0x01000000 * lastByte;
 
-			lastByte = output[0] % 256;
+			lastByte = mod(output[0], 256);
 			output[2] += s_box[lastByte];
 			output[0] >>= 8;
 			output[0] += 0x01000000 * lastByte;
 
-			lastByte = output[0] % 256;
+			lastByte = mod(output[0], 256);
 			output[3] ^= s_box[256 + lastByte];
 
 			if (i == 0 || i == 4)
@@ -134,8 +145,8 @@ public class Receive implements Encryptable {
 
 			outs[1] = ins[0] + ins[1];
 			int firstBits = ins[0] / 0x00080000;
-			outs[2] = ((ins[0] << 13 + firstBits) * ins[2]) % (1 << 32);
-			outs[0] = s_box[output[1] % 0x00000200];
+			outs[2] = mod(((ins[0] << 13 + firstBits) * ins[2]), (1 << 32));
+			outs[0] = s_box[mod(output[1], 0x00000200)];
 
 			firstBits = outs[2] / 0x08000000;
 			outs[2] <<= 5;
@@ -186,25 +197,25 @@ public class Receive implements Encryptable {
 			if (i == 3 || i == 7)
 				output[0] -= output[1];
 
-			firstByte = output[0] / 0x01000000;
-			lastByte = output[0] % 256;
+			firstByte = output[0] >>> 24;
+			lastByte = mod(output[0], 256);
 			output[1] ^= s_box[256 + lastByte];
 			output[0] <<= 8;
 			output[0] += firstByte;
 
-			firstByte = output[0] / 0x01000000;
-			lastByte = output[0] % 256;
+			firstByte = output[0] >>> 24;
+			lastByte = mod(output[0], 256);
 			output[2] -= s_box[lastByte];
 			output[0] <<= 8;
 			output[0] += firstByte;
 
-			firstByte = output[0] / 0x01000000;
-			lastByte = output[0] % 256;
+			firstByte = output[0] >>> 24;
+			lastByte = mod(output[0], 256);
 			output[3] -= s_box[256 + lastByte];
 			output[0] <<= 8;
 			output[0] += firstByte;
 
-			lastByte = output[0] % 256;
+			lastByte = mod(output[0], 256);
 			output[3] ^= s_box[lastByte];
 
 			int temp = output[0];
@@ -214,7 +225,7 @@ public class Receive implements Encryptable {
 			output[3] = temp;
 		}
 		for (int i = 0; i < 4; i++) {
-			output[i] -= key[i];
+			output[i] -= key[36 + i];
 		}
 
 		return output;
@@ -239,21 +250,21 @@ public class Receive implements Encryptable {
 			}
 			output[0] = temp;
 
-			byteOne = output[0] % 256;
+			byteOne = mod(output[0], 256);
 			output[0] >>= 8;
 			output[0] += 0x01000000 * byteOne;
 
-			byteTwo = output[0] % 256;
+			byteTwo = mod(output[0], 256);
 			output[0] >>= 8;
 			output[0] += 0x01000000 * byteTwo;
 
-			byteThree = output[0] % 256;
+			byteThree = mod(output[0], 256);
 			output[0] >>= 8;
 			output[0] += 0x01000000 * byteThree;
 
 			output[3] ^= s_box[byteTwo];
 			output[3] += s_box[256 + byteThree];
-			output[2] += s_box[output[0] % 256];
+			output[2] += s_box[mod(output[0], 256)];
 			output[1] ^= s_box[256 + byteOne];
 
 			if (i == 2 || i == 6)
@@ -263,14 +274,14 @@ public class Receive implements Encryptable {
 		}
 
 		// cryptographic core
-		for (int i = 15; i >= 0; i++) {
+		for (int i = 15; i >= 0; i--) {
 			int temp = output[3];
 			for (int k = 0; k < 3; k++) {
 				output[k + 1] = output[k];
 			}
 			output[0] = temp;
 
-			int lastBits = output[0] % 0x00080000;
+			int lastBits = mod(output[0], 0x00080000);
 			output[0] >>= 13;
 			output[0] += 0x00080000 * lastBits;
 
@@ -280,8 +291,8 @@ public class Receive implements Encryptable {
 
 			outs[1] = ins[0] + ins[1];
 			int firstBits = ins[0] / 0x00080000;
-			outs[2] = ((ins[0] << 13 + firstBits) * ins[2]) % (1 << 32);
-			outs[0] = s_box[output[1] % 0x00000200];
+			outs[2] = mod(((ins[0] << 13 + firstBits) * ins[2]), (1 << 32));
+			outs[0] = s_box[mod(output[1], 0x00000200)];
 
 			firstBits = outs[2] / 0x08000000;
 			outs[2] <<= 5;
@@ -328,22 +339,22 @@ public class Receive implements Encryptable {
 			if (i == 1 || i == 5)
 				output[0] -= output[1];
 
-			byteOne = output[0] / 0x01000000;
+			byteOne = output[0] >>> 24;
 			output[3] ^= s_box[256 + byteOne];
 			output[0] <<= 8;
 			output[0] += byteOne;
 
-			byteOne = output[0] / 0x01000000;
+			byteOne = output[0] >>> 24;
 			output[2] -= s_box[byteOne];
 			output[0] <<= 8;
 			output[0] += byteOne;
 
-			byteOne = output[0] / 0x01000000;
+			byteOne = output[0] >>> 24;
 			output[1] -= s_box[256 + byteOne];
 			output[0] <<= 8;
 			output[0] += byteOne;
 
-			byteOne = output[0] / 0x01000000;
+			byteOne = output[0] >>> 24;
 			output[1] ^= s_box[byteOne];
 		}
 
